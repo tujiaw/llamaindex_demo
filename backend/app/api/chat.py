@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from ..models import ChatRequest, ChatResponse
-from ..services.vector_store import vector_store_service
+from ..services.agent_service import agent_service
 from ..logger import logger
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -15,7 +15,7 @@ async def chat_query(request: ChatRequest):
         # 如果没有选择文件，直接进行 LLM 对话
         if not request.file_ids:
             logger.info("未选择文件，进行纯 LLM 对话")
-            response_text = await vector_store_service.chat(
+            response_text = await agent_service.chat(
                 message=request.message,
                 chat_history=request.chat_history
             )
@@ -26,7 +26,7 @@ async def chat_query(request: ChatRequest):
 
         # 查询向量存储
         # response 是 AgentOutput 对象
-        agent_output = await vector_store_service.query(
+        agent_output = await agent_service.query(
             query_text=request.message,
             chat_history=request.chat_history,
             file_ids=request.file_ids
