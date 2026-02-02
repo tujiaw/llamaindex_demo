@@ -1,0 +1,17 @@
+[project]
+name = "demo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "docx2txt>=0.9",
+    "fastembed>=0.7.4",
+    "llama-index>=0.14.13",
+    "llama-index-llms-openai>=0.6.15",
+    "llama-index-storage-docstore-mongodb>=0.4.1",
+    "llama-index-storage-index-store-mongodb>=0.5.1",
+    "llama-index-vector-stores-qdrant>=0.9.1",
+    "python-dotenv>=1.2.1",
+    "qdrant-client>=1.16.2",
+]
