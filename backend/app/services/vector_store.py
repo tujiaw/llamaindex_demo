@@ -178,8 +178,9 @@ class VectorStoreService:
         # 删除文件元数据 from MongoDB
         await self.metadata_collection.delete_one({"file_id": file_id})
         
-        # 删除物理文件
-        file_path = os.path.join(app_settings.UPLOAD_DIR, file_id)
+        # 删除物理文件（使用保存时的扩展名）
+        file_ext = os.path.splitext(file_doc['filename'])[1].lower()
+        file_path = os.path.join(app_settings.UPLOAD_DIR, f"{file_id}{file_ext}")
         if os.path.exists(file_path):
             try:
                 os.remove(file_path)

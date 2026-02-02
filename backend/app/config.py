@@ -26,8 +26,11 @@ class Settings(BaseSettings):
     
     # 文件上传设置
     UPLOAD_DIR: str = "uploads"
-    MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
-    ALLOWED_EXTENSIONS: list = [".txt", ".pdf", ".docx", ".md"]
+    MAX_FILE_SIZE: int = 100 * 1024 * 1024  # 100MB（支持更大的文档）
+    # 支持的文件扩展名（由DocumentProcessor自动管理）
+    # PDF, Word (.docx, .doc), Excel (.xlsx, .xls, .csv),
+    # PowerPoint (.pptx, .ppt), 文本文档 (.txt, .md, .rst, .log)
+    # 以及其他格式 (.json, .html, .xml, .epub)
     
     class Config:
         env_file = ".env"

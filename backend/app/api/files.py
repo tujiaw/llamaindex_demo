@@ -19,11 +19,12 @@ async def upload_file(file: UploadFile = File(...)):
     logger.info(f"收到文件上传请求: {file.filename}")
     
     # 检查文件类型
-    if not document_processor.is_supported_file(file.filename, settings.ALLOWED_EXTENSIONS):
+    if not document_processor.is_supported_file(file.filename):
         logger.warning(f"文件类型不支持: {file.filename}")
+        supported_exts = document_processor.get_all_supported_extensions()
         raise HTTPException(
             status_code=400,
-            detail=f"不支持的文件类型。支持的类型: {settings.ALLOWED_EXTENSIONS}"
+            detail=f"不支持的文件类型。支持的类型: {supported_exts}"
         )
     
     # 检查文件大小
@@ -41,9 +42,10 @@ async def upload_file(file: UploadFile = File(...)):
     # 生成唯一文件 ID
     file_id = str(uuid.uuid4())
     
-    # 保存文件
+    # 保存文件（保留原始扩展名）
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    file_path = os.path.join(settings.UPLOAD_DIR, file_id)
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    file_path = os.path.join(settings.UPLOAD_DIR, f"{file_id}{file_ext}")
     
     try:
         with open(file_path, "wb") as f:
