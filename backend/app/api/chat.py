@@ -40,23 +40,23 @@ async def chat_query(request: ChatRequest):
         else:
             response_text = str(agent_output)
 
-        # 提取源信息
+        # 从 agent_service 直接获取源信息
         sources = []
-        if hasattr(agent_output, 'tool_calls'):
-            for tool_call in agent_output.tool_calls:
-                # 检查是否包含 tool_output (ToolCallResult) 且有 raw_output (Response)
-                if (hasattr(tool_call, 'tool_output') and 
-                    hasattr(tool_call.tool_output, 'raw_output')):
-                    raw_output = tool_call.tool_output.raw_output
-                    
-                    if hasattr(raw_output, 'source_nodes'):
-                        for node in raw_output.source_nodes:
-                            sources.append({
-                                "text": node.text,
-                                "score": float(node.score) if hasattr(node, 'score') else 0.0,
-                                "filename": node.metadata.get("filename", "未知"),
-                                "file_id": node.metadata.get("file_id", "")
-                            })
+        if agent_service.last_source_nodes:
+            logger.info(f"从 agent_service 获取到 {len(agent_service.last_source_nodes)} 个源片段")
+            for node in agent_service.last_source_nodes:
+                source_data = {
+                    "text": node.text,
+                    "score": float(node.score) if hasattr(node, 'score') else 0.0,
+                    "filename": node.metadata.get("filename", "未知"),
+                    "file_id": node.metadata.get("file_id", "")
+                }
+                sources.append(source_data)
+                logger.info(f"  - 添加片段: {source_data['filename']}, Score: {source_data['score']:.4f}")
+        else:
+            logger.info("agent_service 没有可用的源片段")
+        
+        logger.info(f"最终返回 {len(sources)} 个源片段")
         
         return ChatResponse(
             response=response_text,

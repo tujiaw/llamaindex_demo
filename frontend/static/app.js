@@ -208,22 +208,63 @@ function appendMessage(role, content, sources = []) {
     
     let sourceHtml = '';
     if (sources && sources.length > 0) {
+        // 按分数从高到低排序
+        const sortedSources = [...sources].sort((a, b) => b.score - a.score);
+        
         sourceHtml = `
             <div class="sources">
-                <strong>参考来源:</strong>
-                ${sources.map(s => `
-                    <div style="margin-top: 5px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 5px;">
-                        <span style="font-weight:bold;">📄 ${s.filename}</span> (Score: ${s.score.toFixed(2)})
-                        <br>
-                        <span style="color: #555; font-style: italic; font-size: 0.9em;">"${s.text}"</span>
-                    </div>
-                `).join('')}
+                <div style="margin-bottom: 8px; font-weight: bold; color: #667eea;">
+                    📚 检索到 ${sortedSources.length} 个相关片段
+                </div>
+                ${sortedSources.map((s, idx) => {
+                    const sourceId = `source-${Date.now()}-${idx}`;
+                    return `
+                        <div style="margin-top: 10px; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+                            <div style="
+                                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                color: white;
+                                padding: 10px 12px;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                cursor: pointer;
+                            " onclick="toggleSource('${sourceId}')">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-weight: bold;">📄 ${s.filename}</span>
+                                    <span style="
+                                        background: rgba(255,255,255,0.3);
+                                        padding: 2px 8px;
+                                        border-radius: 12px;
+                                        font-size: 12px;
+                                    ">相关度: ${(s.score * 100).toFixed(1)}%</span>
+                                </div>
+                                <span id="${sourceId}-icon" style="font-size: 18px; transition: transform 0.3s;">▼</span>
+                            </div>
+                            <div id="${sourceId}" style="
+                                max-height: 0;
+                                overflow: hidden;
+                                transition: max-height 0.3s ease-out;
+                                background: #f8f9fa;
+                            ">
+                                <div style="padding: 12px; color: #333;">
+                                    <div style="
+                                        background: white;
+                                        padding: 12px;
+                                        border-radius: 6px;
+                                        border-left: 3px solid #667eea;
+                                        line-height: 1.6;
+                                        font-size: 14px;
+                                        white-space: pre-wrap;
+                                        word-wrap: break-word;
+                                    ">${escapeHtml(s.text)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
             </div>
         `;
     }
-    
-    // Markdown-like simple formatting for response
-    // content = content.replace(/\n/g, '<br>');
     
     msgDiv.innerHTML = `
         <div class="message-content">
@@ -233,6 +274,27 @@ function appendMessage(role, content, sources = []) {
     `;
     messagesDiv.appendChild(msgDiv);
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+function toggleSource(sourceId) {
+    const contentDiv = document.getElementById(sourceId);
+    const iconSpan = document.getElementById(`${sourceId}-icon`);
+    
+    if (contentDiv.style.maxHeight && contentDiv.style.maxHeight !== '0px') {
+        // 折叠
+        contentDiv.style.maxHeight = '0px';
+        iconSpan.style.transform = 'rotate(0deg)';
+    } else {
+        // 展开
+        contentDiv.style.maxHeight = contentDiv.scrollHeight + 'px';
+        iconSpan.style.transform = 'rotate(180deg)';
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function appendLoading() {

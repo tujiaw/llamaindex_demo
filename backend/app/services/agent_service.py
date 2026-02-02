@@ -14,6 +14,7 @@ class AgentService:
     
     def __init__(self, vector_store_service: VectorStoreService):
         self.vector_store_service = vector_store_service
+        self.last_source_nodes = []  # 保存最后一次查询的源节点
     
     async def query(self, query_text: str, chat_history: List[Dict], file_ids: Optional[List[str]] = None, top_k: int = 3):
         """使用 FunctionAgent 进行对话查询"""
@@ -42,19 +43,23 @@ class AgentService:
             filters=filters
         )
         
-        async def search_documents(query: str) -> str:
+        async def search_documents(query: str):
             """Useful for answering natural language questions about uploaded documents."""
             logger.info(f"Agent调用搜索工具，查询内容: {query}")
             response = await query_engine.aquery(query)
             logger.info(f"搜索工具返回结果: {str(response)[:200]}... (Total len: {len(str(response))})")
             
-            # 记录详细的源节点信息以便调试
+            # 保存源节点供后续使用
             if hasattr(response, 'source_nodes'):
+                self.last_source_nodes = response.source_nodes
                 logger.info(f"搜索到 {len(response.source_nodes)} 个相关片段")
                 for i, node in enumerate(response.source_nodes):
                     logger.info(f"  [片段 {i+1}] Score: {node.score:.4f}, File: {node.metadata.get('filename')}")
-                    logger.info(f"  Content: {node.text}")  # 打印片段内容
+                    logger.info(f"  Content: {node.text[:100]}...")  # 打印片段内容前100字符
+            else:
+                self.last_source_nodes = []
             
+            # 返回字符串给LLM，但源节点已保存
             return str(response)
 
         query_tool = FunctionTool.from_defaults(
