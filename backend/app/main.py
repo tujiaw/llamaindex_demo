@@ -2,28 +2,45 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi import Request
 from contextlib import asynccontextmanager
 import os
+import time
 
 from .config import settings
 from .services.vector_store import vector_store_service
 from .api import files, chat
+from .logger import logger
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时初始化向量存储
     await vector_store_service.initialize()
-    print("✅ 向量存储服务已初始化")
+    logger.info("✅ 向量存储服务已初始化")
     yield
     # 关闭时的清理工作
-    print("🔴 应用关闭")
+    logger.info("🔴 应用关闭")
 
 app = FastAPI(
     title=settings.API_TITLE,
     version=settings.API_VERSION,
     lifespan=lifespan
 )
+
+@app.middleware("http")
+async def log_request_time(request: Request, call_next):
+    """记录请求耗时的中间件"""
+    start_time = time.perf_counter()
+    try:
+        response = await call_next(request)
+        process_time = time.perf_counter() - start_time
+        logger.info(f"Method: {request.method} | Path: {request.url.path} | Status: {response.status_code} | Duration: {process_time:.4f}s")
+        return response
+    except Exception as e:
+        process_time = time.perf_counter() - start_time
+        logger.error(f"Method: {request.method} | Path: {request.url.path} | Status: 500 | Duration: {process_time:.4f}s | Error: {str(e)}")
+        raise e
 
 # 配置 CORS
 app.add_middleware(
@@ -52,7 +69,7 @@ if os.path.exists(frontend_dir):
     async def root():
         return FileResponse(os.path.join(frontend_dir, "index.html"))
 else:
-    print(f"Warning: Frontend directory not found at {frontend_dir}")
+    logger.warning(f"Frontend directory not found at {frontend_dir}")
     @app.get("/")
     async def root():
         return {

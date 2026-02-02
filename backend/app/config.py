@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     QDRANT_PORT: int = 6333
     QDRANT_COLLECTION: str = "llamaindex_demo"
     
+    # MongoDB 设置
+    MONGO_URI: str = "mongodb://admin:admin123@10.10.107.57:27017"
+    MONGO_DB: str = "llamaindex_db"
+    MONGO_COLLECTION_METADATA: str = "file_metadata"
+    
     # OpenAI 设置
     OPENAI_API_KEY: str
     OPENAI_API_BASE: str

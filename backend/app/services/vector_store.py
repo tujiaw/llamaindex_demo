@@ -1,16 +1,18 @@
 from llama_index.core import VectorStoreIndex, StorageContext, Settings, Document
-from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator
+from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator, FilterCondition
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI
-from qdrant_client import AsyncQdrantClient
+from qdrant_client import AsyncQdrantClient, QdrantClient
 from qdrant_client.http import models as qmodels
+from motor.motor_asyncio import AsyncIOMotorClient
 from typing import List, Dict, Optional
 import os
 import json
 from datetime import datetime
 
 from ..config import settings as app_settings
+from ..logger import logger
 
 class VectorStoreService:
     """向量存储服务 - 负责管理文档和向量"""
@@ -20,6 +22,15 @@ class VectorStoreService:
             host=app_settings.QDRANT_HOST,
             port=app_settings.QDRANT_PORT
         )
+        self.sync_qdrant_client = QdrantClient(
+            host=app_settings.QDRANT_HOST,
+            port=app_settings.QDRANT_PORT
+        )
+        
+        # MongoDB Client
+        self.mongo_client = AsyncIOMotorClient(app_settings.MONGO_URI)
+        self.db = self.mongo_client[app_settings.MONGO_DB]
+        self.metadata_collection = self.db[app_settings.MONGO_COLLECTION_METADATA]
         
         # 配置 LlamaIndex
         Settings.embed_model = OpenAIEmbedding(
@@ -36,6 +47,7 @@ class VectorStoreService:
         )
         
         self.vector_store = QdrantVectorStore(
+            client=self.sync_qdrant_client,
             aclient=self.qdrant_client,
             collection_name=app_settings.QDRANT_COLLECTION,
             enable_hybrid=False,
@@ -48,40 +60,49 @@ class VectorStoreService:
         
         self.index: Optional[VectorStoreIndex] = None
         
-        # 文件元数据存储（简单起见使用 JSON 文件）
-        self.metadata_file = "backend/file_metadata.json"
-        self.file_metadata = self._load_metadata()
-    
-    def _load_metadata(self) -> Dict:
-        """加载文件元数据"""
-        if os.path.exists(self.metadata_file):
-            with open(self.metadata_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {}
-    
-    def _save_metadata(self):
-        """保存文件元数据"""
-        os.makedirs(os.path.dirname(self.metadata_file), exist_ok=True)
-        with open(self.metadata_file, 'w', encoding='utf-8') as f:
-            json.dump(self.file_metadata, f, ensure_ascii=False, indent=2)
-    
+    def _get_embedding_dim(self) -> int:
+        """根据配置的模型名称获取向量维度"""
+        model = app_settings.OPENAI_EMBEDDING_MODEL
+        if "text-embedding-3-large" in model:
+            return 3072
+        # text-embedding-3-small and text-embedding-ada-002 are 1536
+        return 1536
+
     async def initialize(self):
         """初始化索引"""
         try:
-            await self.qdrant_client.get_collection(app_settings.QDRANT_COLLECTION)
-            # 集合存在，加载索引
+            # 检查集合是否存在
+            exists = await self.qdrant_client.collection_exists(app_settings.QDRANT_COLLECTION)
+            
+            if not exists:
+                logger.info(f"集合不存在，创建新索引: {app_settings.QDRANT_COLLECTION}")
+                vector_size = self._get_embedding_dim()
+                await self.qdrant_client.create_collection(
+                    collection_name=app_settings.QDRANT_COLLECTION,
+                    vectors_config=qmodels.VectorParams(
+                        size=vector_size,
+                        distance=qmodels.Distance.COSINE
+                    )
+                )
+            else:
+                logger.info(f"已加载现有索引: {app_settings.QDRANT_COLLECTION}")
+            
             self.index = VectorStoreIndex.from_vector_store(
                 vector_store=self.vector_store,
                 storage_context=self.storage_context,
             )
-            print(f"已加载现有索引: {app_settings.QDRANT_COLLECTION}")
-        except Exception:
-            # 集合不存在，创建空索引
-            self.index = VectorStoreIndex.from_documents(
-                [],
-                storage_context=self.storage_context,
-            )
-            print(f"已创建新索引: {app_settings.QDRANT_COLLECTION}")
+            
+        except Exception as e:
+            logger.error(f"初始化索引失败: {e}")
+            # 如果失败，尝试使用空文档列表初始化（作为后备方案）
+            try:
+                self.index = VectorStoreIndex.from_documents(
+                    [],
+                    storage_context=self.storage_context,
+                )
+                logger.warning(f"已通过 from_documents 创建新索引: {app_settings.QDRANT_COLLECTION}")
+            except Exception as e2:
+                logger.error(f"后备初始化也失败: {e2}")
     
     async def add_documents(
         self, 
@@ -100,20 +121,23 @@ class VectorStoreService:
         for doc in documents:
             self.index.insert(doc)
         
-        # 保存文件元数据
-        self.file_metadata[file_id] = {
+        # 保存文件元数据到 MongoDB
+        metadata = {
+            "file_id": file_id,
             "filename": filename,
             "size": file_size,
             "uploaded_at": datetime.now().isoformat(),
             "chunks_count": len(documents)
         }
-        self._save_metadata()
+        await self.metadata_collection.insert_one(metadata)
         
         return len(documents)
     
     async def delete_file(self, file_id: str) -> int:
         """删除文件及其所有相关向量"""
-        if file_id not in self.file_metadata:
+        # 检查文件是否存在
+        file_doc = await self.metadata_collection.find_one({"file_id": file_id})
+        if not file_doc:
             return 0
         
         # 使用 Qdrant Filter 删除 (更高效)
@@ -133,7 +157,7 @@ class VectorStoreService:
                 )
             )
         except Exception as e:
-            print(f"Error deleting from Qdrant: {e}")
+            logger.error(f"Error deleting from Qdrant: {e}")
             # 如果之前的代码认为 metadata 是嵌套的，尝试嵌套删除
             try:
                 await self.qdrant_client.delete(
@@ -152,10 +176,8 @@ class VectorStoreService:
             except Exception:
                 pass
 
-        # 删除文件元数据
-        if file_id in self.file_metadata:
-            del self.file_metadata[file_id]
-            self._save_metadata()
+        # 删除文件元数据 from MongoDB
+        await self.metadata_collection.delete_one({"file_id": file_id})
         
         # 删除物理文件
         file_path = os.path.join(app_settings.UPLOAD_DIR, file_id)
@@ -167,18 +189,14 @@ class VectorStoreService:
         
         return 1 # 返回 1 表示成功，具体删除了多少个向量难以精确统计，但这不重要
     
-    def get_all_files(self) -> List[Dict]:
+    async def get_all_files(self) -> List[Dict]:
         """获取所有文件信息"""
-        return [
-            {
-                "file_id": file_id,
-                **metadata
-            }
-            for file_id, metadata in self.file_metadata.items()
-        ]
+        cursor = self.metadata_collection.find({}, {"_id": 0})
+        files = await cursor.to_list(length=None)
+        return files
     
-    async def query(self, query_text: str, file_ids: Optional[List[str]] = None, top_k: int = 3):
-        """查询向量存储"""
+    async def query(self, query_text: str, chat_history: List[Dict], file_ids: Optional[List[str]] = None, top_k: int = 3):
+        """使用 FunctionAgent 进行对话查询"""
         if not self.index:
             await self.initialize()
             
@@ -189,16 +207,76 @@ class VectorStoreService:
                     MetadataFilter(key="file_id", value=fid)
                     for fid in file_ids
                 ],
-                operator=FilterOperator.OR,
+                condition=FilterCondition.OR,
             )
+        
+        # 将历史记录转换为 LlamaIndex 的 ChatMessage 对象
+        from llama_index.core.llms import ChatMessage, MessageRole
+        messages = []
+        for msg in chat_history:
+            role = MessageRole.USER if msg.role == "user" else MessageRole.ASSISTANT
+            messages.append(ChatMessage(role=role, content=msg.content))
+            
+        # 创建查询引擎工具
+        from llama_index.core.tools import FunctionTool
         
         query_engine = self.index.as_query_engine(
             similarity_top_k=top_k,
             filters=filters
         )
-        response = await query_engine.aquery(query_text)
         
-        return response
+        async def search_documents(query: str) -> str:
+            """Useful for answering natural language questions about uploaded documents."""
+            logger.info(f"Agent调用搜索工具，查询内容: {query}")
+            response = await query_engine.aquery(query)
+            logger.info(f"搜索工具返回结果: {str(response)[:200]}... (Total len: {len(str(response))})")
+            
+            # 记录详细的源节点信息以便调试
+            if hasattr(response, 'source_nodes'):
+                logger.info(f"搜索到 {len(response.source_nodes)} 个相关片段")
+                for i, node in enumerate(response.source_nodes):
+                    logger.info(f"  [片段 {i+1}] Score: {node.score:.4f}, File: {node.metadata.get('filename')}")
+                    logger.info(f"  Content: {node.text}")  # 打印片段内容
+            
+            return str(response)
+
+        query_tool = FunctionTool.from_defaults(
+            async_fn=search_documents,
+            name="search_documents",
+            description="Useful for retrieving information from uploaded documents."
+        )
+        
+        # 使用 FunctionAgent
+        from llama_index.core.agent.workflow import FunctionAgent
+        
+        agent = FunctionAgent(
+            name="rag_agent",
+            tools=[query_tool],
+            llm=Settings.llm,
+            system_prompt="你是一个智能助手。你必须优先使用工具查询文档库来回答用户的问题"
+        )
+        
+        # FunctionAgent (Workflow) 使用 run 方法
+        handler = agent.run(user_msg=query_text, chat_history=messages)
+        output = await handler
+        
+        # output 是 AgentOutput 对象
+        return output
+
+    async def chat(self, message: str, chat_history: List[Dict]):
+        """纯 LLM 对话，不检索向量库"""
+        from llama_index.core.llms import ChatMessage, MessageRole
+        messages = []
+        for msg in chat_history:
+            role = MessageRole.USER if msg.role == "user" else MessageRole.ASSISTANT
+            messages.append(ChatMessage(role=role, content=msg.content))
+        
+        # 添加当前用户消息
+        messages.append(ChatMessage(role=MessageRole.USER, content=message))
+            
+        # 使用配置好的 LLM 直接回答
+        return await Settings.llm.achat(messages)
+
 
 # 全局实例
 vector_store_service = VectorStoreService()
