@@ -298,11 +298,23 @@
         <!-- 聊天标签页 -->
         <div id="chat-tab" class="tab-content">
             <div class="chat-container">
+                <!-- 用户信息和记忆状态 -->
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px; border-radius: 8px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span style="font-weight: bold;">🧠 智能记忆已启用</span>
+                        <span style="margin-left: 10px; font-size: 12px; opacity: 0.9;">我会记住你的偏好和对话历史</span>
+                    </div>
+                    <div style="font-size: 11px; opacity: 0.8;" id="userIdDisplay"></div>
+                </div>
+                
                 <div id="chatFileSelector"></div>
                 <div class="chat-messages" id="chatMessages">
                     <div class="message assistant">
                         <div class="message-content">
-                            👋 你好！我可以帮你查询已上传的文档内容。请输入你的问题。
+                            👋 你好！我是具有长期记忆的智能助手。我可以：<br><br>
+                            🧠 <strong>记住你的偏好</strong> - 告诉我你的喜好，我会记住<br>
+                            📚 <strong>查询文档</strong> - 帮你从上传的文档中找到信息<br>
+                            💡 <strong>个性化回答</strong> - 结合你的习惯给出更贴心的答案
                         </div>
                     </div>
                 </div>

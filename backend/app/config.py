@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
 
@@ -24,6 +25,10 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     
+    # Mem0 设置 (可选，如果使用 Mem0 Platform API)
+    MEM0_API_KEY: str = ""  # 如果为空，则使用 OSS 配置
+    MEM0_SEARCH_MSG_LIMIT: int = 5  # 用于检索的消息数量
+    
     # 文件上传设置
     UPLOAD_DIR: str = "uploads"
     MAX_FILE_SIZE: int = 100 * 1024 * 1024  # 100MB（支持更大的文档）
@@ -36,3 +41,5 @@ class Settings(BaseSettings):
         env_file = ".env"
 
 settings = Settings()
+os.environ["OPENAI_API_BASE"] = settings.OPENAI_API_BASE
+os.environ["OPENAI_API_KEY"] = settings.OPENAI_API_KEY

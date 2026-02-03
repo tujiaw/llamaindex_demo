@@ -327,8 +327,6 @@ class DocumentProcessor:
                 documents = self._parse_excel(file_path)
             elif doc_type == 'powerpoint':
                 documents = self._parse_powerpoint(file_path)
-            elif doc_type == 'text':
-                documents = self._parse_text(file_path)
             else:  # 其他类型使用默认解析器
                 ext = self.get_file_extension(file_path)
                 documents = self._parse_with_simple_reader(file_path, [ext])

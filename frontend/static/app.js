@@ -4,6 +4,16 @@ const API_BASE = '/api';
 let allFiles = [];
 let selectedFileIds = new Set();
 
+// 获取或创建用户ID（用于 Mem0 记忆）
+function getUserId() {
+    let userId = localStorage.getItem('llamaindex_user_id');
+    if (!userId) {
+        userId = 'user_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('llamaindex_user_id', userId);
+    }
+    return userId;
+}
+
 // Tabs
 function switchTab(tab) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -178,6 +188,7 @@ async function sendMessage() {
     const loadingId = appendLoading();
     
     const fileIds = Array.from(selectedFileIds);
+    const userId = getUserId(); // 获取用户ID用于记忆
     
     try {
         const res = await fetch(`${API_BASE}/chat/query`, {
@@ -185,7 +196,9 @@ async function sendMessage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 message: message,
-                file_ids: fileIds.length > 0 ? fileIds : null // null means all
+                file_ids: fileIds.length > 0 ? fileIds : null, // null means all
+                user_id: userId, // 传递用户ID
+                chat_history: [] // Mem0 会自动管理历史，这里传空数组
             })
         });
         
@@ -317,5 +330,15 @@ function handleKeyPress(e) {
     if (e.key === 'Enter') sendMessage();
 }
 
+// 显示用户ID
+function displayUserId() {
+    const userIdElement = document.getElementById('userIdDisplay');
+    if (userIdElement) {
+        const userId = getUserId();
+        userIdElement.textContent = `用户ID: ${userId}`;
+    }
+}
+
 // Init
 loadFiles();
+displayUserId();

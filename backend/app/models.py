@@ -29,6 +29,7 @@ class ChatRequest(BaseModel):
     message: str
     chat_history: Optional[List[ChatMessage]] = []
     file_ids: Optional[List[str]] = None
+    user_id: Optional[str] = "default_user"  # 用户ID，用于记忆管理
 
 class ChatResponse(BaseModel):
     response: str
