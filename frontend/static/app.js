@@ -286,7 +286,7 @@ function appendMessage(role, content, sources = []) {
         </div>
     `;
     messagesDiv.appendChild(msgDiv);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    scrollToBottom();
 }
 
 function toggleSource(sourceId) {
@@ -301,6 +301,8 @@ function toggleSource(sourceId) {
         // 展开
         contentDiv.style.maxHeight = contentDiv.scrollHeight + 'px';
         iconSpan.style.transform = 'rotate(180deg)';
+        // 展开后延迟滚动，等待动画完成
+        setTimeout(() => scrollToBottom(), 300);
     }
 }
 
@@ -318,7 +320,17 @@ function appendLoading() {
     msgDiv.className = 'message assistant';
     msgDiv.innerHTML = '<div class="message-content">Thinking...</div>';
     messagesDiv.appendChild(msgDiv);
+    scrollToBottom();
     return id;
+}
+
+// 平滑滚动到底部
+function scrollToBottom() {
+    const messagesDiv = document.getElementById('chatMessages');
+    messagesDiv.scrollTo({
+        top: messagesDiv.scrollHeight,
+        behavior: 'smooth'
+    });
 }
 
 function removeMessage(id) {

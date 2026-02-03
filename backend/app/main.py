@@ -6,6 +6,16 @@ from fastapi import Request
 from contextlib import asynccontextmanager
 import os
 import time
+import warnings
+
+# 过滤第三方库的 Pydantic 弃用警告
+# 这些警告来自 mem0ai 和 llama-index 内部使用的已弃用 Pydantic V1 API
+# 项目本身的代码已升级到 Pydantic V2 标准
+warnings.filterwarnings(
+    "ignore",
+    category=DeprecationWarning,
+    message=".*__fields__.*|.*__fields_set__.*|.*model_computed_fields.*|.*model_fields.*|.*OPENAI_API_BASE.*"
+)
 
 from .config import settings
 from .services.vector_store import vector_store_service
