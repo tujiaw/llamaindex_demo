@@ -4,15 +4,18 @@ import os
 import uuid
 
 from ..models import FileUploadResponse, FileInfo, DeleteFileResponse
-from ..services.vector_store import vector_store_service
-from ..services.document_processor import document_processor
+from ..dependencies import VectorStoreServiceDep, DocumentProcessorDep
 from ..config import settings
 from ..logger import logger
 
 router = APIRouter(prefix="/files", tags=["files"])
 
 @router.post("/upload", response_model=FileUploadResponse)
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    vector_store_service: VectorStoreServiceDep,
+    document_processor: DocumentProcessorDep,
+    file: UploadFile = File(...)
+):
     """
     上传文件并向量化
     """
@@ -89,7 +92,9 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"处理文件时出错: {str(e)}")
 
 @router.get("/list", response_model=List[FileInfo])
-async def list_files():
+async def list_files(
+    vector_store_service: VectorStoreServiceDep
+):
     """
     获取所有已上传的文件
     """
@@ -98,7 +103,10 @@ async def list_files():
     return [FileInfo(**file) for file in files]
 
 @router.delete("/{file_id}", response_model=DeleteFileResponse)
-async def delete_file(file_id: str):
+async def delete_file(
+    file_id: str,
+    vector_store_service: VectorStoreServiceDep
+):
     """
     删除文件及其向量
     """

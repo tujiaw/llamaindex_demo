@@ -15,7 +15,7 @@ warnings.filterwarnings(
 )
 
 from .config import settings
-from .services.vector_store import vector_store_service
+from .services.vector_store import get_vector_store_service
 from .api import files, chat
 from .logger import logger
 
@@ -23,6 +23,7 @@ from .logger import logger
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时初始化向量存储
+    vector_store_service = get_vector_store_service()
     await vector_store_service.initialize()
     logger.info("✅ 向量存储服务已初始化")
     yield

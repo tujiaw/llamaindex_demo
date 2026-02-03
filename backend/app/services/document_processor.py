@@ -4,6 +4,8 @@ from typing import List, Optional, Dict, Any
 import os
 import logging
 from pathlib import Path
+import asyncio
+import threading
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -63,71 +65,95 @@ class DocumentProcessor:
         
         # 延迟加载读取器（避免不必要的导入）
         self._readers = {}
+        self._readers_lock = threading.Lock()  # 保护 _readers 字典的锁（使用线程锁因为读取器加载是同步的）
         
     def _get_pdf_reader(self):
-        """获取PDF读取器"""
-        if 'pdf' not in self._readers:
-            try:
-                from llama_index.readers.file import PyMuPDFReader
-                self._readers['pdf'] = PyMuPDFReader()
-                logger.info("已加载 PyMuPDFReader 用于PDF解析")
-            except ImportError:
-                logger.warning("PyMuPDFReader 不可用，将使用默认PDF解析器")
-                self._readers['pdf'] = None
-        return self._readers['pdf']
+        """获取PDF读取器（线程安全）"""
+        # 快速路径：如果已加载，直接返回
+        if 'pdf' in self._readers:
+            return self._readers['pdf']
+        
+        # 使用锁保护加载过程
+        with self._readers_lock:
+            # 双重检查，避免重复加载
+            if 'pdf' not in self._readers:
+                try:
+                    from llama_index.readers.file import PyMuPDFReader
+                    self._readers['pdf'] = PyMuPDFReader()
+                    logger.info("已加载 PyMuPDFReader 用于PDF解析")
+                except ImportError:
+                    logger.warning("PyMuPDFReader 不可用，将使用默认PDF解析器")
+                    self._readers['pdf'] = None
+            return self._readers['pdf']
     
     def _get_docx_reader(self):
-        """获取Word文档读取器"""
-        if 'docx' not in self._readers:
-            try:
-                from llama_index.readers.file import DocxReader
-                self._readers['docx'] = DocxReader()
-                logger.info("已加载 DocxReader 用于Word文档解析")
-            except ImportError:
-                logger.warning("DocxReader 不可用，将使用默认解析器")
-                self._readers['docx'] = None
-        return self._readers['docx']
+        """获取Word文档读取器（线程安全）"""
+        if 'docx' in self._readers:
+            return self._readers['docx']
+        
+        with self._readers_lock:
+            if 'docx' not in self._readers:
+                try:
+                    from llama_index.readers.file import DocxReader
+                    self._readers['docx'] = DocxReader()
+                    logger.info("已加载 DocxReader 用于Word文档解析")
+                except ImportError:
+                    logger.warning("DocxReader 不可用，将使用默认解析器")
+                    self._readers['docx'] = None
+            return self._readers['docx']
     
     def _get_legacy_office_reader(self):
         """
-        获取旧版Office文档读取器（.doc文件）
+        获取旧版Office文档读取器（.doc文件）（线程安全）
         
         注意: 需要安装 llama-index-readers-legacy-office 包和 Java 运行环境
         安装方法: uv pip install llama-index-readers-legacy-office
         """
-        if 'legacy_office' not in self._readers:
-            try:
-                from llama_index.readers.legacy_office import LegacyOfficeReader  # type: ignore
-                self._readers['legacy_office'] = LegacyOfficeReader()
-                logger.info("已加载 LegacyOfficeReader 用于.doc文件解析")
-            except ImportError:
-                logger.warning("LegacyOfficeReader 不可用，.doc文件可能无法解析")
-                self._readers['legacy_office'] = None
-        return self._readers['legacy_office']
+        if 'legacy_office' in self._readers:
+            return self._readers['legacy_office']
+        
+        with self._readers_lock:
+            if 'legacy_office' not in self._readers:
+                try:
+                    from llama_index.readers.legacy_office import LegacyOfficeReader  # type: ignore
+                    self._readers['legacy_office'] = LegacyOfficeReader()
+                    logger.info("已加载 LegacyOfficeReader 用于.doc文件解析")
+                except ImportError:
+                    logger.warning("LegacyOfficeReader 不可用，.doc文件可能无法解析")
+                    self._readers['legacy_office'] = None
+            return self._readers['legacy_office']
     
     def _get_excel_reader(self):
-        """获取Excel读取器"""
-        if 'excel' not in self._readers:
-            try:
-                from llama_index.readers.file import PandasExcelReader
-                self._readers['excel'] = PandasExcelReader()
-                logger.info("已加载 PandasExcelReader 用于Excel解析")
-            except ImportError:
-                logger.warning("PandasExcelReader 不可用，将使用pandas直接读取")
-                self._readers['excel'] = None
-        return self._readers['excel']
+        """获取Excel读取器（线程安全）"""
+        if 'excel' in self._readers:
+            return self._readers['excel']
+        
+        with self._readers_lock:
+            if 'excel' not in self._readers:
+                try:
+                    from llama_index.readers.file import PandasExcelReader
+                    self._readers['excel'] = PandasExcelReader()
+                    logger.info("已加载 PandasExcelReader 用于Excel解析")
+                except ImportError:
+                    logger.warning("PandasExcelReader 不可用，将使用pandas直接读取")
+                    self._readers['excel'] = None
+            return self._readers['excel']
     
     def _get_pptx_reader(self):
-        """获取PowerPoint读取器"""
-        if 'pptx' not in self._readers:
-            try:
-                from llama_index.readers.file import PptxReader
-                self._readers['pptx'] = PptxReader()
-                logger.info("已加载 PptxReader 用于PowerPoint解析")
-            except ImportError:
-                logger.warning("PptxReader 不可用，将使用默认解析器")
-                self._readers['pptx'] = None
-        return self._readers['pptx']
+        """获取PowerPoint读取器（线程安全）"""
+        if 'pptx' in self._readers:
+            return self._readers['pptx']
+        
+        with self._readers_lock:
+            if 'pptx' not in self._readers:
+                try:
+                    from llama_index.readers.file import PptxReader
+                    self._readers['pptx'] = PptxReader()
+                    logger.info("已加载 PptxReader 用于PowerPoint解析")
+                except ImportError:
+                    logger.warning("PptxReader 不可用，将使用默认解析器")
+                    self._readers['pptx'] = None
+            return self._readers['pptx']
     
     def _parse_pdf(self, file_path: str) -> List[Document]:
         """解析PDF文档"""
@@ -365,5 +391,19 @@ class DocumentProcessor:
         return ext in all_exts
 
 
-# 创建全局实例
-document_processor = DocumentProcessor()
+# 单例实例（依赖注入模式）
+_document_processor: Optional[DocumentProcessor] = None
+
+def get_document_processor() -> DocumentProcessor:
+    """
+    获取 DocumentProcessor 单例（依赖注入模式）
+    
+    特性：
+    - 延迟初始化：只在首次使用时创建
+    - 单例模式：应用生命周期内只有一个实例
+    - 易于测试：可以通过 FastAPI dependency_overrides 替换
+    """
+    global _document_processor
+    if _document_processor is None:
+        _document_processor = DocumentProcessor()
+    return _document_processor

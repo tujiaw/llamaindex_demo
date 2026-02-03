@@ -1,12 +1,15 @@
 from fastapi import APIRouter, HTTPException
 from ..models import ChatRequest, ChatResponse
-from ..services.agent_service import agent_service
+from ..dependencies import AgentServiceDep
 from ..logger import logger
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 @router.post("/query", response_model=ChatResponse)
-async def chat_query(request: ChatRequest):
+async def chat_query(
+    request: ChatRequest,
+    agent_service: AgentServiceDep
+):
     """
     统一的对话接口 - 完全使用 Mem0 管理记忆
     
@@ -21,7 +24,8 @@ async def chat_query(request: ChatRequest):
     try:
         # 统一调用 chat 接口，根据 file_ids 自动决定是否加载文档检索工具
         # 完全使用 Mem0 管理记忆，不需要传入 chat_history
-        agent_output = await agent_service.chat(
+        # 返回值: (agent_output, source_nodes)
+        agent_output, source_nodes = await agent_service.chat(
             message=request.message,
             file_ids=request.file_ids,
             user_id=request.user_id
@@ -35,11 +39,11 @@ async def chat_query(request: ChatRequest):
         else:
             response_text = str(agent_output)
 
-        # 从 agent_service 直接获取源信息
+        # 从返回值中获取源信息（而不是从共享实例变量）
         sources = []
-        if agent_service.last_source_nodes:
-            logger.info(f"从 agent_service 获取到 {len(agent_service.last_source_nodes)} 个源片段")
-            for node in agent_service.last_source_nodes:
+        if source_nodes:
+            logger.info(f"获取到 {len(source_nodes)} 个源片段")
+            for node in source_nodes:
                 source_data = {
                     "text": node.text,
                     "score": float(node.score) if hasattr(node, 'score') else 0.0,
@@ -49,7 +53,7 @@ async def chat_query(request: ChatRequest):
                 sources.append(source_data)
                 logger.info(f"  - 添加片段: {source_data['filename']}, Score: {source_data['score']:.4f}")
         else:
-            logger.info("agent_service 没有可用的源片段")
+            logger.info("没有可用的源片段")
         
         logger.info(f"最终返回 {len(sources)} 个源片段")
         

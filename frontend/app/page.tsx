@@ -106,8 +106,16 @@ export default function Home() {
                   onClick={isAllSelected ? handleDeselectAll : handleSelectAll}
                   className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors group"
                 >
+                  <div className="flex-1 text-left">
+                    <div className="text-xs font-medium text-gray-900">
+                      {isAllSelected ? "已全选" : selectedFileIds.size > 0 ? "部分选中" : "选择所有来源"}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {selectedFileIds.size} / {files.length} 个来源
+                    </div>
+                  </div>
                   {/* 全选复选框 */}
-                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
                     isAllSelected 
                       ? "bg-blue-500 border-blue-500" 
                       : selectedFileIds.size > 0
@@ -123,14 +131,6 @@ export default function Home() {
                         )}
                       </svg>
                     )}
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="text-xs font-medium text-gray-900">
-                      {isAllSelected ? "已全选" : selectedFileIds.size > 0 ? "部分选中" : "选择所有来源"}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {selectedFileIds.size} / {files.length} 个来源
-                    </div>
                   </div>
                 </button>
               </div>

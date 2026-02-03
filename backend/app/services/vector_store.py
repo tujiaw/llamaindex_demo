@@ -9,6 +9,7 @@ from typing import List, Dict, Optional
 import os
 import json
 from datetime import datetime
+import asyncio
 
 from ..config import settings as app_settings
 from ..logger import logger
@@ -58,6 +59,7 @@ class VectorStoreService:
         )
         
         self.index: Optional[VectorStoreIndex] = None
+        self._index_lock = asyncio.Lock()  # 保护 index 的初始化和修改
         
     def _get_embedding_dim(self) -> int:
         """根据配置的模型名称获取向量维度"""
@@ -68,40 +70,50 @@ class VectorStoreService:
         return 1536
 
     async def initialize(self):
-        """初始化索引"""
-        try:
-            # 检查集合是否存在
-            exists = await self.qdrant_client.collection_exists(app_settings.QDRANT_COLLECTION)
+        """初始化索引（线程安全）"""
+        # 快速路径：如果已初始化，直接返回
+        if self.index is not None:
+            return
+        
+        # 使用锁保护初始化过程
+        async with self._index_lock:
+            # 双重检查，避免重复初始化
+            if self.index is not None:
+                return
             
-            if not exists:
-                logger.info(f"集合不存在，创建新索引: {app_settings.QDRANT_COLLECTION}")
-                vector_size = self._get_embedding_dim()
-                await self.qdrant_client.create_collection(
-                    collection_name=app_settings.QDRANT_COLLECTION,
-                    vectors_config=qmodels.VectorParams(
-                        size=vector_size,
-                        distance=qmodels.Distance.COSINE
-                    )
-                )
-            else:
-                logger.info(f"已加载现有索引: {app_settings.QDRANT_COLLECTION}")
-            
-            self.index = VectorStoreIndex.from_vector_store(
-                vector_store=self.vector_store,
-                storage_context=self.storage_context,
-            )
-            
-        except Exception as e:
-            logger.error(f"初始化索引失败: {e}")
-            # 如果失败，尝试使用空文档列表初始化（作为后备方案）
             try:
-                self.index = VectorStoreIndex.from_documents(
-                    [],
+                # 检查集合是否存在
+                exists = await self.qdrant_client.collection_exists(app_settings.QDRANT_COLLECTION)
+                
+                if not exists:
+                    logger.info(f"集合不存在，创建新索引: {app_settings.QDRANT_COLLECTION}")
+                    vector_size = self._get_embedding_dim()
+                    await self.qdrant_client.create_collection(
+                        collection_name=app_settings.QDRANT_COLLECTION,
+                        vectors_config=qmodels.VectorParams(
+                            size=vector_size,
+                            distance=qmodels.Distance.COSINE
+                        )
+                    )
+                else:
+                    logger.info(f"已加载现有索引: {app_settings.QDRANT_COLLECTION}")
+                
+                self.index = VectorStoreIndex.from_vector_store(
+                    vector_store=self.vector_store,
                     storage_context=self.storage_context,
                 )
-                logger.warning(f"已通过 from_documents 创建新索引: {app_settings.QDRANT_COLLECTION}")
-            except Exception as e2:
-                logger.error(f"后备初始化也失败: {e2}")
+                
+            except Exception as e:
+                logger.error(f"初始化索引失败: {e}")
+                # 如果失败，尝试使用空文档列表初始化（作为后备方案）
+                try:
+                    self.index = VectorStoreIndex.from_documents(
+                        [],
+                        storage_context=self.storage_context,
+                    )
+                    logger.warning(f"已通过 from_documents 创建新索引: {app_settings.QDRANT_COLLECTION}")
+                except Exception as e2:
+                    logger.error(f"后备初始化也失败: {e2}")
     
     async def add_documents(
         self, 
@@ -110,17 +122,23 @@ class VectorStoreService:
         documents: List[Document],
         file_size: int
     ) -> int:
-        """添加文档到向量存储"""
+        """添加文档到向量存储（线程安全）"""
+        # 确保 index 已初始化
+        if self.index is None:
+            await self.initialize()
+        
         # 为每个文档添加 file_id 元数据
         for doc in documents:
             doc.metadata["file_id"] = file_id
             doc.metadata["filename"] = filename
         
-        # 插入文档
-        for doc in documents:
-            self.index.insert(doc)
+        # 使用锁保护文档插入操作
+        # 注意：虽然 Qdrant 本身是线程安全的，但 LlamaIndex 的 insert 操作可能涉及内部状态更新
+        async with self._index_lock:
+            for doc in documents:
+                self.index.insert(doc)
         
-        # 保存文件元数据到 MongoDB
+        # 保存文件元数据到 MongoDB（MongoDB 客户端是线程安全的）
         metadata = {
             "file_id": file_id,
             "filename": filename,
@@ -196,5 +214,19 @@ class VectorStoreService:
         return files
 
 
-# 全局实例
-vector_store_service = VectorStoreService()
+# 单例实例（依赖注入模式）
+_vector_store_service: Optional[VectorStoreService] = None
+
+def get_vector_store_service() -> VectorStoreService:
+    """
+    获取 VectorStoreService 单例（依赖注入模式）
+    
+    特性：
+    - 延迟初始化：只在首次使用时创建
+    - 单例模式：应用生命周期内只有一个实例
+    - 易于测试：可以通过 FastAPI dependency_overrides 替换
+    """
+    global _vector_store_service
+    if _vector_store_service is None:
+        _vector_store_service = VectorStoreService()
+    return _vector_store_service

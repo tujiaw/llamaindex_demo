@@ -124,85 +124,73 @@ export function Chat({ files, selectedFileIds }: ChatProps) {
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-4xl mx-auto space-y-6">
           {messages.map((message, idx) => (
-            <div key={idx} className="space-y-3">
-              {/* 角色标签 */}
-              <div className="flex items-center gap-2">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${
-                  message.role === "user" 
-                    ? "bg-blue-600 text-white" 
-                    : "bg-gray-900 text-white"
+            <div key={idx} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[85%] ${message.role === "user" ? "ml-auto" : "mr-auto"}`}>
+                {/* 消息气泡 */}
+                <div className={`rounded-2xl p-4 ${
+                  message.role === "user"
+                    ? "bg-blue-50 border border-blue-100"
+                    : "bg-white border border-gray-200"
                 }`}>
-                  {message.role === "user" ? "你" : "AI"}
-                </div>
-                <span className="text-sm font-medium text-gray-900">
-                  {message.role === "user" ? "你" : "助手"}
-                </span>
-              </div>
-
-              {/* 消息内容 */}
-              <div className="pl-9">
-                <div className="prose prose-sm max-w-none">
-                  <p className="whitespace-pre-wrap text-[15px] text-gray-800 leading-7">
-                    {message.content}
-                  </p>
-                </div>
-
-                {/* 源文档 */}
-                {message.sources && message.sources.length > 0 && (
-                  <div className="mt-4">
-                    <div className="text-xs text-gray-500 mb-2 flex items-center gap-1">
-                      <BookOpen className="h-3 w-3" />
-                      <span>{message.sources.length} 个来源</span>
-                    </div>
-                    <Accordion type="single" collapsible className="w-full space-y-2">
-                      {message.sources
-                        .sort((a, b) => b.score - a.score)
-                        .map((source, sidx) => (
-                          <AccordionItem
-                            key={sidx}
-                            value={`source-${idx}-${sidx}`}
-                            className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50"
-                          >
-                            <AccordionTrigger className="hover:no-underline px-4 py-2 text-left hover:bg-gray-100">
-                              <div className="flex items-center justify-between w-full pr-4">
-                                <span className="text-xs font-medium text-gray-700">
-                                  {source.filename}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {(source.score * 100).toFixed(0)}%
-                                </span>
-                              </div>
-                            </AccordionTrigger>
-                            <AccordionContent>
-                              <div className="px-4 pb-3">
-                                <div className="bg-white p-3 rounded border-l-2 border-gray-900">
-                                  <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
-                                    {source.text}
-                                  </p>
-                                </div>
-                              </div>
-                            </AccordionContent>
-                          </AccordionItem>
-                        ))}
-                    </Accordion>
+                  <div className="prose prose-sm max-w-none">
+                    <p className="whitespace-pre-wrap text-[15px] text-gray-800 leading-7 m-0">
+                      {message.content}
+                    </p>
                   </div>
-                )}
+
+                  {/* 源文档 */}
+                  {message.sources && message.sources.length > 0 && (
+                    <div className="mt-4">
+                      <div className="text-xs text-gray-500 mb-2 flex items-center gap-1">
+                        <BookOpen className="h-3 w-3" />
+                        <span>{message.sources.length} 个来源</span>
+                      </div>
+                      <Accordion type="single" collapsible className="w-full space-y-2">
+                        {message.sources
+                          .sort((a, b) => b.score - a.score)
+                          .map((source, sidx) => (
+                            <AccordionItem
+                              key={sidx}
+                              value={`source-${idx}-${sidx}`}
+                              className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50"
+                            >
+                              <AccordionTrigger className="hover:no-underline px-4 py-2 text-left hover:bg-gray-100">
+                                <div className="flex items-center justify-between w-full pr-4">
+                                  <span className="text-xs font-medium text-gray-700">
+                                    {source.filename}
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    {(source.score * 100).toFixed(0)}%
+                                  </span>
+                                </div>
+                              </AccordionTrigger>
+                              <AccordionContent>
+                                <div className="px-4 pb-3">
+                                  <div className="bg-white p-3 rounded border-l-2 border-gray-900">
+                                    <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
+                                      {source.text}
+                                    </p>
+                                  </div>
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          ))}
+                      </Accordion>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ))}
           {loading && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full bg-gray-900 text-white flex items-center justify-center text-xs font-medium">
-                  AI
-                </div>
-                <span className="text-sm font-medium text-gray-900">助手</span>
-              </div>
-              <div className="pl-9">
-                <div className="flex gap-1.5">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.2s]" />
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+            <div className="flex justify-start">
+              <div className="max-w-[85%]">
+                <div className="rounded-2xl p-4 bg-white border border-gray-200">
+                  <div className="flex gap-1.5">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+                  </div>
                 </div>
               </div>
             </div>

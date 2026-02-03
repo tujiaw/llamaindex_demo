@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Trash2, File, Clock, Database } from "lucide-react";
+import { Trash2, File, Clock, Database, MoreVertical, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface FileItem {
   file_id: string;
@@ -101,76 +108,88 @@ export function FileList({ refreshTrigger, onFilesChange, selectedFiles, onSelec
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       {files.map((file) => {
         const isSelected = selectedFiles.has(file.file_id);
         return (
           <div
             key={file.file_id}
-            onClick={() => toggleFileSelection(file.file_id)}
-            className={`group relative rounded-lg p-3 transition-all cursor-pointer ${
-              isSelected 
-                ? "bg-blue-50 border-2 border-blue-500" 
-                : "bg-white border border-gray-200 hover:bg-gray-50"
-            }`}
+            className="group relative flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            <div className="flex items-start gap-3">
-              {/* 勾选框 */}
-              <div className="flex-shrink-0 mt-1">
-                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                  isSelected 
-                    ? "bg-blue-500 border-blue-500" 
-                    : "border-gray-300 bg-white"
-                }`}>
-                  {isSelected && (
-                    <svg className="w-3 h-3 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
-                      <path d="M5 13l4 4L19 7"></path>
-                    </svg>
-                  )}
-                </div>
+            {/* 图标区域：文档图标和三点菜单叠加 */}
+            <div className="flex-shrink-0 relative w-5 h-5">
+              {/* 文档图标 - 默认显示，悬停时隐藏 */}
+              <div className="absolute inset-0 flex items-center justify-center group-hover:opacity-0 transition-opacity">
+                <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                </svg>
               </div>
-
-              {/* 文件图标 */}
-              <div className="flex-shrink-0 mt-0.5">
-                <div className={`w-8 h-8 rounded flex items-center justify-center ${
-                  isSelected ? "bg-blue-100" : "bg-gray-100"
-                }`}>
-                  <File className={`h-4 w-4 ${isSelected ? "text-blue-600" : "text-gray-600"}`} />
-                </div>
+              
+              {/* 三点菜单 - 默认隐藏，悬停时显示 */}
+              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      onClick={(e) => e.stopPropagation()}
+                      className="p-0.5 hover:bg-gray-200 rounded"
+                    >
+                      <MoreVertical className="h-4 w-4 text-gray-600" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent 
+                    align="start" 
+                    side="bottom"
+                    sideOffset={2}
+                    className="w-44 bg-white border-gray-200 shadow-lg"
+                  >
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteFile(file.file_id);
+                      }}
+                      className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      移除来源
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // TODO: 实现重命名功能
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <Edit className="h-4 w-4 mr-2" />
+                      重命名来源
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
+            </div>
 
-              {/* 文件信息 */}
+            {/* 文件名和选中状态区域（可点击选中） */}
+            <div
+              onClick={() => toggleFileSelection(file.file_id)}
+              className="flex-1 flex items-center gap-3 cursor-pointer min-w-0"
+            >
+              {/* 文件名 */}
               <div className="flex-1 min-w-0">
-                <h3 className={`text-sm font-medium truncate mb-1 ${
-                  isSelected ? "text-blue-900" : "text-gray-900"
-                }`}>
+                <h3 className="text-sm text-gray-900 truncate">
                   {file.filename}
                 </h3>
-                <div className={`flex items-center gap-2 text-xs ${
-                  isSelected ? "text-blue-700" : "text-gray-500"
-                }`}>
-                  <span>{(file.size / 1024).toFixed(0)} KB</span>
-                  <span>•</span>
-                  <span>{file.chunks_count} 块</span>
-                </div>
               </div>
 
-              {/* 删除按钮 */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteFile(file.file_id);
-                }}
-                className={`h-6 w-6 flex-shrink-0 opacity-0 group-hover:opacity-100 absolute right-2 top-2 ${
-                  isSelected 
-                    ? "hover:bg-blue-100 text-blue-900" 
-                    : "hover:bg-red-50 hover:text-red-600"
-                }`}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              {/* 选中状态 */}
+              <div className="flex-shrink-0">
+                {isSelected ? (
+                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <div className="w-5 h-5 rounded border-2 border-gray-300 group-hover:border-gray-400" />
+                )}
+              </div>
             </div>
           </div>
         );
