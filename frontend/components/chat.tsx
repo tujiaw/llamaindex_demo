@@ -1,24 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, BookOpen } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Send } from "lucide-react";
+import { ChatMessage } from "./chat-message";
+import { useChat, Source } from "@/hooks/use-chat";
 
 interface FileItem {
   file_id: string;
   filename: string;
-}
-
-interface Source {
-  filename: string;
-  text: string;
-  score: number;
-}
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  sources?: Source[];
 }
 
 interface ChatProps {
@@ -29,149 +18,38 @@ interface ChatProps {
 }
 
 export function Chat({ files, selectedFileIds, onSourceClick, userId }: ChatProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content:
-        "你好！我可以帮你分析和理解上传的文档。\n\n请先在左侧添加来源，然后向我提问任何关于文档的问题。",
-    },
-  ]);
+  const { messages, isLoading, sendMessage } = useChat({ userId });
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const sendMessage = async () => {
-    if (!input.trim() || loading) return;
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
-    const userMessage: Message = { role: "user", content: input };
-    const userInput = input;
+  const handleSendMessage = async () => {
+    if (!input.trim() || isLoading) return;
+    const currentInput = input;
     setInput("");
-    setLoading(true);
     
-    // 重置输入框高度
+    // Reset height
     const textarea = document.querySelector("textarea") as HTMLTextAreaElement;
     if (textarea) {
-      textarea.style.height = "auto";
+        textarea.style.height = "auto";
+        // Min height 24px + py-2 (8px * 2) = 40px roughly? 
+        // Original style was minHeight: "24px" with py-2.
     }
 
-    // 添加用户消息和空的助手消息
-    let assistantMessageIndex = 0;
-    setMessages((prev) => {
-      assistantMessageIndex = prev.length + 1; // 用户消息后的下一个位置
-      return [
-        ...prev,
-        userMessage,
-        { role: "assistant", content: "", sources: [] }
-      ];
-    });
-
-    try {
-      const res = await fetch("/api/chat/query/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: userInput,
-          file_ids: selectedFileIds.size > 0 ? Array.from(selectedFileIds) : null,
-          user_id: userId,
-          chat_history: [],
-        }),
-      });
-
-      if (!res.ok) throw new Error("请求失败");
-
-      // 读取流式响应
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let currentContent = "";
-      let currentSources: Source[] = [];
-
-      while (reader) {
-        const { done, value } = await reader.read();
-        if (done) {
-          console.log("流式数据读取完成");
-          break;
-        }
-
-        // 解码数据块
-        buffer += decoder.decode(value, { stream: true });
-        
-        // 处理 SSE 数据
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || ""; // 保留最后一个不完整的行
-
-        for (const line of lines) {
-          if (!line.trim() || !line.startsWith("data: ")) continue;
-          
-          try {
-            const jsonStr = line.substring(6); // 移除 "data: " 前缀
-            const chunk = JSON.parse(jsonStr);
-            console.log("收到流式数据:", chunk);
-
-            if (chunk.type === "content") {
-              // 累积内容
-              currentContent += chunk.data.delta;
-              console.log("当前内容:", currentContent);
-              // 实时更新消息
-              setMessages((prev) => {
-                const newMessages = [...prev];
-                newMessages[assistantMessageIndex] = {
-                  role: "assistant",
-                  content: currentContent,
-                  sources: currentSources,
-                };
-                return newMessages;
-              });
-            } else if (chunk.type === "sources") {
-              // 更新源信息
-              console.log("收到源信息:", chunk.data.sources);
-              currentSources = chunk.data.sources || [];
-              setMessages((prev) => {
-                const newMessages = [...prev];
-                newMessages[assistantMessageIndex] = {
-                  role: "assistant",
-                  content: currentContent,
-                  sources: currentSources,
-                };
-                return newMessages;
-              });
-            } else if (chunk.type === "error") {
-              throw new Error(chunk.data.message || "未知错误");
-            } else if (chunk.type === "done") {
-              console.log("收到完成信号");
-            }
-          } catch (parseError) {
-            console.error("解析流式数据失败:", parseError, line);
-          }
-        }
-      }
-    } catch (e) {
-      const errorMessage: Message = {
-        role: "assistant",
-        content: `Error: ${e instanceof Error ? e.message : "未知错误"}`,
-      };
-      setMessages((prev) => {
-        const newMessages = [...prev];
-        newMessages[assistantMessageIndex] = errorMessage;
-        return newMessages;
-      });
-    } finally {
-      setLoading(false);
-    }
+    await sendMessage(currentInput, Array.from(selectedFileIds));
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSendMessage();
     }
   };
 
@@ -188,66 +66,12 @@ export function Chat({ files, selectedFileIds, onSourceClick, userId }: ChatProp
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-4xl mx-auto space-y-6">
           {messages.map((message, idx) => (
-            <div key={idx} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] ${message.role === "user" ? "ml-auto" : "mr-auto"}`}>
-                {/* 消息气泡 */}
-                <div className={`rounded-2xl p-4 ${
-                  message.role === "user"
-                    ? "bg-blue-50 border border-blue-100"
-                    : "bg-white border border-gray-200"
-                }`}>
-                  <div className="prose prose-sm max-w-none">
-                    <p className="whitespace-pre-wrap text-[15px] text-gray-800 leading-7 m-0">
-                      {message.content}
-                    </p>
-                  </div>
-
-                  {/* 源文档 */}
-                  {message.sources && message.sources.length > 0 && (
-                    <div className="mt-4">
-                      <div className="text-xs text-gray-500 mb-2 flex items-center gap-1">
-                        <BookOpen className="h-3 w-3" />
-                        <span>{message.sources.length} 个来源</span>
-                      </div>
-                      <div className="space-y-2">
-                        {message.sources
-                          .sort((a, b) => b.score - a.score)
-                          .map((source, sidx) => (
-                            <button
-                              key={sidx}
-                              onClick={() => onSourceClick(source)}
-                              className="w-full border border-gray-200 rounded-lg overflow-hidden bg-gray-50 hover:bg-gray-100 transition-colors"
-                            >
-                              <div className="px-4 py-2 flex items-center justify-between">
-                                <span className="text-xs font-medium text-gray-700">
-                                  {source.filename}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {(source.score * 100).toFixed(0)}%
-                                </span>
-                              </div>
-                            </button>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+            <ChatMessage 
+              key={message.id || idx} 
+              message={message} 
+              onSourceClick={onSourceClick}
+            />
           ))}
-          {loading && (
-            <div className="flex justify-start">
-              <div className="max-w-[85%]">
-                <div className="rounded-2xl p-4 bg-white border border-gray-200">
-                  <div className="flex gap-1.5">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.2s]" />
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0.4s]" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
           <div ref={messagesEndRef} />
         </div>
       </div>
@@ -260,11 +84,11 @@ export function Chat({ files, selectedFileIds, onSourceClick, userId }: ChatProp
               <textarea
                 value={input}
                 onChange={handleInput}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyPress}
                 placeholder="开始输入..."
                 rows={1}
                 className="flex-1 bg-transparent outline-none resize-none text-sm py-2 overflow-hidden"
-                disabled={loading}
+                disabled={isLoading}
                 style={{ 
                   minHeight: "24px",
                   maxHeight: "120px"
@@ -282,10 +106,10 @@ export function Chat({ files, selectedFileIds, onSourceClick, userId }: ChatProp
                 
                 {/* 发送按钮 */}
                 <button
-                  onClick={sendMessage}
-                  disabled={loading || !input.trim()}
+                  onClick={handleSendMessage}
+                  disabled={isLoading || !input.trim()}
                   className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
-                    loading || !input.trim()
+                    isLoading || !input.trim()
                       ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                       : "bg-gray-900 text-white hover:bg-gray-800"
                   }`}
