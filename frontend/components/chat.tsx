@@ -52,7 +52,7 @@ export function Chat({ files, selectedFileIds, onSourceClick, userId }: ChatProp
     if (!input.trim() || loading) return;
 
     const userMessage: Message = { role: "user", content: input };
-    setMessages((prev) => [...prev, userMessage]);
+    const userInput = input;
     setInput("");
     setLoading(true);
     
@@ -62,12 +62,23 @@ export function Chat({ files, selectedFileIds, onSourceClick, userId }: ChatProp
       textarea.style.height = "auto";
     }
 
+    // 添加用户消息和空的助手消息
+    let assistantMessageIndex = 0;
+    setMessages((prev) => {
+      assistantMessageIndex = prev.length + 1; // 用户消息后的下一个位置
+      return [
+        ...prev,
+        userMessage,
+        { role: "assistant", content: "", sources: [] }
+      ];
+    });
+
     try {
-      const res = await fetch("/api/chat/query", {
+      const res = await fetch("/api/chat/query/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: input,
+          message: userInput,
           file_ids: selectedFileIds.size > 0 ? Array.from(selectedFileIds) : null,
           user_id: userId,
           chat_history: [],
@@ -76,19 +87,82 @@ export function Chat({ files, selectedFileIds, onSourceClick, userId }: ChatProp
 
       if (!res.ok) throw new Error("请求失败");
 
-      const data = await res.json();
-      const assistantMessage: Message = {
-        role: "assistant",
-        content: data.response,
-        sources: data.sources || [],
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
+      // 读取流式响应
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let currentContent = "";
+      let currentSources: Source[] = [];
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) {
+          console.log("流式数据读取完成");
+          break;
+        }
+
+        // 解码数据块
+        buffer += decoder.decode(value, { stream: true });
+        
+        // 处理 SSE 数据
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // 保留最后一个不完整的行
+
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith("data: ")) continue;
+          
+          try {
+            const jsonStr = line.substring(6); // 移除 "data: " 前缀
+            const chunk = JSON.parse(jsonStr);
+            console.log("收到流式数据:", chunk);
+
+            if (chunk.type === "content") {
+              // 累积内容
+              currentContent += chunk.data.delta;
+              console.log("当前内容:", currentContent);
+              // 实时更新消息
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                newMessages[assistantMessageIndex] = {
+                  role: "assistant",
+                  content: currentContent,
+                  sources: currentSources,
+                };
+                return newMessages;
+              });
+            } else if (chunk.type === "sources") {
+              // 更新源信息
+              console.log("收到源信息:", chunk.data.sources);
+              currentSources = chunk.data.sources || [];
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                newMessages[assistantMessageIndex] = {
+                  role: "assistant",
+                  content: currentContent,
+                  sources: currentSources,
+                };
+                return newMessages;
+              });
+            } else if (chunk.type === "error") {
+              throw new Error(chunk.data.message || "未知错误");
+            } else if (chunk.type === "done") {
+              console.log("收到完成信号");
+            }
+          } catch (parseError) {
+            console.error("解析流式数据失败:", parseError, line);
+          }
+        }
+      }
     } catch (e) {
       const errorMessage: Message = {
         role: "assistant",
         content: `Error: ${e instanceof Error ? e.message : "未知错误"}`,
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) => {
+        const newMessages = [...prev];
+        newMessages[assistantMessageIndex] = errorMessage;
+        return newMessages;
+      });
     } finally {
       setLoading(false);
     }

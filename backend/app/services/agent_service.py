@@ -1,10 +1,10 @@
 from llama_index.core import Settings
 from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator, FilterCondition
 from llama_index.core.tools import FunctionTool
-from llama_index.core.agent.workflow import FunctionAgent
+from llama_index.core.agent.workflow import FunctionAgent, AgentStream
 from llama_index.core.llms import ChatMessage, MessageRole
 from llama_index.memory.mem0 import Mem0Memory
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, AsyncGenerator
 import asyncio
 
 from ..logger import logger
@@ -262,6 +262,213 @@ class AgentService:
         
         # output 是 AgentOutput 对象，返回 output 和 source_nodes
         return output, source_nodes
+    
+    async def chat_stream(
+        self, 
+        message: str, 
+        file_ids: Optional[List[str]] = None, 
+        top_k: int = 3, 
+        user_id: str = "default_user"
+    ) -> AsyncGenerator[Dict, None]:
+        """
+        流式聊天接口，使用 SSE 返回实时数据
+        
+        完全使用 Mem0 管理记忆，不需要传入 chat_history
+        
+        Args:
+            message: 用户消息
+            file_ids: 文件ID列表，为空时不加载文档检索工具
+            top_k: 检索文档数量
+            user_id: 用户ID，用于 Mem0 记忆管理
+            
+        Yields:
+            dict: 包含 type 和 data 的字典
+                - type: "content" | "sources" | "done" | "error"
+                - data: 相应的数据内容
+        """
+        source_nodes = []  # 本次请求的源节点
+        
+        try:
+            # 初始化向量存储（如果需要）
+            if file_ids and not self.vector_store_service.index:
+                await self.vector_store_service.initialize()
+            
+            # 获取或创建该用户的 Mem0 记忆实例
+            memory = await self._get_or_create_memory(user_id)
+            
+            # 根据 file_ids 决定是否添加文档检索工具
+            tools = []
+            system_prompt = "你是一个友好的智能助手。你能记住用户的偏好和过往对话信息，提供个性化的服务。"
+            
+            if file_ids:
+                # 有文件ID，创建文档检索工具
+                logger.info(f"加载文档检索工具，文件ID: {file_ids}")
+                
+                filters = MetadataFilters(
+                    filters=[
+                        MetadataFilter(key="file_id", value=fid)
+                        for fid in file_ids
+                    ],
+                    condition=FilterCondition.OR,
+                )
+                
+                query_engine = self.vector_store_service.index.as_query_engine(
+                    similarity_top_k=top_k,
+                    filters=filters
+                )
+                
+                async def search_documents(query: str):
+                    """Useful for answering natural language questions about uploaded documents."""
+                    logger.info(f"Agent调用搜索工具，查询内容: {query}")
+                    response = await query_engine.aquery(query)
+                    logger.info(f"搜索工具返回结果: {str(response)[:200]}... (Total len: {len(str(response))})")
+                    
+                    # 保存源节点到本地变量（避免多用户共享）
+                    if hasattr(response, 'source_nodes'):
+                        # 使用 nonlocal 关键字访问外层作用域的 source_nodes
+                        nonlocal source_nodes
+                        source_nodes = response.source_nodes
+                        logger.info(f"搜索到 {len(response.source_nodes)} 个相关片段")
+                        for i, node in enumerate(response.source_nodes):
+                            logger.info(f"  [片段 {i+1}] Score: {node.score:.4f}, File: {node.metadata.get('filename')}")
+                            logger.info(f"  Content: {node.text[:100]}...")
+                    
+                    return str(response)
+                
+                query_tool = FunctionTool.from_defaults(
+                    async_fn=search_documents,
+                    name="search_documents",
+                    description="""检索知识库中的文档内容。这是你最重要的工具，应该优先使用。
+
+**优先使用此工具的情况（覆盖绝大部分场景）：**
+- 任何可能与文档相关的问题
+- 专业领域的问题（技术、业务、学术等）
+- 需要具体数据、观点、细节的问题
+- 用户的任何提问（除非明确是问候语或简单计算）
+- 当你不确定时，宁可使用工具也不要凭记忆回答
+
+**极少数不使用此工具的情况：**
+- 仅限简单问候语（如"你好"、"早上好"）
+- 明确的数学计算（如"1+1等于多少"）
+
+**核心原则：宁可多查，不可少查。当有任何疑问时，必须使用工具检索。**
+"""
+                )
+                
+                tools = [query_tool]
+                system_prompt = """你是一个智能助手，拥有长期记忆和文档检索能力。
+
+## 你的能力
+
+1. **长期记忆** - 自动记住用户的偏好、背景信息
+2. **文档检索** - 使用 search_documents 工具查询用户上传的文档
+3. **知识问答** - 在没有相关文档时提供通用知识
+
+## 核心工具使用策略：优先使用工具
+
+### ⚠️ 重要原则
+**默认行为：对任何问题都应该优先尝试使用 search_documents 工具进行检索**
+
+这意味着：
+- 收到用户问题后，首先思考"能否通过检索找到答案"
+- 即使问题看起来像常识，也应该先检索（因为文档中可能有更专业、更准确的答案）
+- 即使你认为你知道答案，也应该先检索（因为文档中可能有更新、更具体的信息）
+
+### ✅ 必须使用 search_documents 工具：
+- 任何专业领域问题（技术、业务、学术、行业知识等）
+- 任何可能需要引用数据、观点、细节的问题
+- 任何通用知识问题（因为文档中可能有更专业的解释）
+- 用户的大部分提问和询问
+- **当不确定是否需要工具时 → 使用工具！**
+
+### ❌ 极少数不使用工具的情况：
+- **仅限**简单问候（如"你好"、"早上好"、"再见"）
+- **仅限**明确的简单数学计算（如"1+1"、"10*5"）
+- **仅限**关于你自己的介绍性问题（如"你是谁"、"你能做什么"）
+- **仅限**编程相关问题（如"Python怎样进行异步编程"）
+
+### 🎯 决策流程：
+1. 收到用户问题
+2. 这是简单问候或介绍性问题吗？→ 否 → **立即使用 search_documents 工具**
+3. 这是明确的简单计算吗？→ 否 → **立即使用 search_documents 工具**
+4. 任何其他情况 → **立即使用 search_documents 工具**
+
+## 回答要求
+- 优先使用工具检索，基于检索结果回答
+- 如果检索结果不相关，再考虑使用通用知识补充
+- 结合长期记忆，提供个性化的回答
+- 宁可多检索，不要凭记忆编造"""
+            else:
+                # 没有文件ID，不加载文档检索工具
+                logger.info("未指定文件ID，不加载文档检索工具")
+            
+            # 使用 FunctionAgent（即使没有工具也可以使用，以便支持 memory）
+            agent = FunctionAgent(
+                name="chat_agent_with_memory",
+                tools=tools,
+                llm=Settings.llm,
+                system_prompt=system_prompt
+            )
+            
+            # 使用 Mem0 记忆进行对话
+            if memory:
+                logger.info(f"使用 Mem0 记忆进行流式对话（用户: {user_id}，工具数: {len(tools)}）")
+                handler = agent.run(user_msg=message, memory=memory)
+            else:
+                logger.warning(f"Mem0 记忆创建失败，使用空聊天历史（用户: {user_id}，工具数: {len(tools)}）")
+                # 如果 Mem0 创建失败，使用空的 chat_history
+                handler = agent.run(user_msg=message, chat_history=[])
+            
+            # 流式输出
+            logger.info("开始监听流式事件...")
+            event_count = 0
+            async for event in handler.stream_events():
+                event_count += 1
+                logger.debug(f"收到事件 #{event_count}: {type(event).__name__}")
+                if isinstance(event, AgentStream):
+                    # 发送内容片段
+                    if event.delta:
+                        logger.debug(f"发送内容片段: {event.delta[:50]}...")
+                        yield {
+                            "type": "content",
+                            "data": {"delta": event.delta}
+                        }
+            
+            logger.info(f"流式事件处理完成，共收到 {event_count} 个事件")
+            
+            # 等待完成
+            await handler
+            
+            # 发送源信息
+            if source_nodes:
+                logger.info(f"流式输出：获取到 {len(source_nodes)} 个源片段")
+                sources = []
+                for node in source_nodes:
+                    source_data = {
+                        "text": node.text,
+                        "score": float(node.score) if hasattr(node, 'score') else 0.0,
+                        "filename": node.metadata.get("filename", "未知"),
+                        "file_id": node.metadata.get("file_id", "")
+                    }
+                    sources.append(source_data)
+                
+                yield {
+                    "type": "sources",
+                    "data": {"sources": sources}
+                }
+            
+            # 发送完成信号
+            yield {
+                "type": "done",
+                "data": {}
+            }
+            
+        except Exception as e:
+            logger.error(f"流式聊天处理失败: {str(e)}", exc_info=True)
+            yield {
+                "type": "error",
+                "data": {"message": str(e)}
+            }
 
 
 # 单例实例（依赖注入模式）
