@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Send, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 interface FileItem {
   file_id: string;
@@ -25,9 +24,10 @@ interface Message {
 interface ChatProps {
   files: FileItem[];
   selectedFileIds: Set<string>;
+  onSourceClick: (source: Source) => void;
 }
 
-export function Chat({ files, selectedFileIds }: ChatProps) {
+export function Chat({ files, selectedFileIds, onSourceClick }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -145,37 +145,26 @@ export function Chat({ files, selectedFileIds }: ChatProps) {
                         <BookOpen className="h-3 w-3" />
                         <span>{message.sources.length} 个来源</span>
                       </div>
-                      <Accordion type="single" collapsible className="w-full space-y-2">
+                      <div className="space-y-2">
                         {message.sources
                           .sort((a, b) => b.score - a.score)
                           .map((source, sidx) => (
-                            <AccordionItem
+                            <button
                               key={sidx}
-                              value={`source-${idx}-${sidx}`}
-                              className="border border-gray-200 rounded-lg overflow-hidden bg-gray-50"
+                              onClick={() => onSourceClick(source)}
+                              className="w-full border border-gray-200 rounded-lg overflow-hidden bg-gray-50 hover:bg-gray-100 transition-colors"
                             >
-                              <AccordionTrigger className="hover:no-underline px-4 py-2 text-left hover:bg-gray-100">
-                                <div className="flex items-center justify-between w-full pr-4">
-                                  <span className="text-xs font-medium text-gray-700">
-                                    {source.filename}
-                                  </span>
-                                  <span className="text-xs text-gray-500">
-                                    {(source.score * 100).toFixed(0)}%
-                                  </span>
-                                </div>
-                              </AccordionTrigger>
-                              <AccordionContent>
-                                <div className="px-4 pb-3">
-                                  <div className="bg-white p-3 rounded border-l-2 border-gray-900">
-                                    <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">
-                                      {source.text}
-                                    </p>
-                                  </div>
-                                </div>
-                              </AccordionContent>
-                            </AccordionItem>
+                              <div className="px-4 py-2 flex items-center justify-between">
+                                <span className="text-xs font-medium text-gray-700">
+                                  {source.filename}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {(source.score * 100).toFixed(0)}%
+                                </span>
+                              </div>
+                            </button>
                           ))}
-                      </Accordion>
+                      </div>
                     </div>
                   )}
                 </div>
