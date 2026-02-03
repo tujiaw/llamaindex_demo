@@ -8,33 +8,21 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 @router.post("/query", response_model=ChatResponse)
 async def chat_query(request: ChatRequest):
     """
-    对话查询 - 基于向量检索，集成 Mem0 长期记忆
+    统一的对话接口 - 完全使用 Mem0 管理记忆
     
     特性：
+    - 使用 Mem0 自动管理用户记忆，无需前端传入聊天历史
     - 自动记住用户偏好和关键信息
-    - 使用 search_documents 工具查询文档库
+    - 当指定 file_ids 时，使用 search_documents 工具查询文档库
+    - 当不指定 file_ids 时，进行纯 LLM 对话
     - 结合长期记忆和文档知识提供个性化答案
     """
     logger.info(f"收到聊天请求（用户: {request.user_id}）: {request.message[:50]}... (File IDs: {request.file_ids})")
     try:
-        # 如果没有选择文件，直接进行 LLM 对话（带记忆）
-        if not request.file_ids:
-            logger.info("未选择文件，进行纯 LLM 对话（带 Mem0 记忆）")
-            response_text = await agent_service.chat(
-                message=request.message,
-                chat_history=request.chat_history,
-                user_id=request.user_id
-            )
-            return ChatResponse(
-                response=str(response_text),
-                sources=[]
-            )
-
-        # 查询向量存储（集成 Mem0 记忆）
-        # response 是 AgentOutput 对象
-        agent_output = await agent_service.query(
-            query_text=request.message,
-            chat_history=request.chat_history,
+        # 统一调用 chat 接口，根据 file_ids 自动决定是否加载文档检索工具
+        # 完全使用 Mem0 管理记忆，不需要传入 chat_history
+        agent_output = await agent_service.chat(
+            message=request.message,
             file_ids=request.file_ids,
             user_id=request.user_id
         )

@@ -104,13 +104,33 @@ class AgentService:
         
         return self._mem0_memories.get(user_id)
     
-    async def query(self, query_text: str, chat_history: List[Dict], file_ids: Optional[List[str]] = None, top_k: int = 3, user_id: str = "default_user"):
-        """使用 FunctionAgent 进行对话查询，集成 Mem0 记忆模块"""
-        if not self.vector_store_service.index:
+    async def chat(self, message: str, file_ids: Optional[List[str]] = None, top_k: int = 3, user_id: str = "default_user"):
+        """
+        统一的聊天接口，根据 file_ids 决定是否加载文档检索工具
+        
+        完全使用 Mem0 管理记忆，不需要传入 chat_history
+        
+        Args:
+            message: 用户消息
+            file_ids: 文件ID列表，为空时不加载文档检索工具
+            top_k: 检索文档数量
+            user_id: 用户ID，用于 Mem0 记忆管理
+        """
+        # 初始化向量存储（如果需要）
+        if file_ids and not self.vector_store_service.index:
             await self.vector_store_service.initialize()
-            
-        filters = None
+        
+        # 获取或创建该用户的 Mem0 记忆实例
+        memory = self._get_or_create_memory(user_id)
+        
+        # 根据 file_ids 决定是否添加文档检索工具
+        tools = []
+        system_prompt = "你是一个友好的智能助手。你能记住用户的偏好和过往对话信息，提供个性化的服务。"
+        
         if file_ids:
+            # 有文件ID，创建文档检索工具
+            logger.info(f"加载文档检索工具，文件ID: {file_ids}")
+            
             filters = MetadataFilters(
                 filters=[
                     MetadataFilter(key="file_id", value=fid)
@@ -118,45 +138,34 @@ class AgentService:
                 ],
                 condition=FilterCondition.OR,
             )
-        
-        # 获取或创建该用户的 Mem0 记忆实例
-        memory = self._get_or_create_memory(user_id)
-        
-        # 将历史记录转换为 LlamaIndex 的 ChatMessage 对象
-        messages = []
-        for msg in chat_history:
-            role = MessageRole.USER if msg.role == "user" else MessageRole.ASSISTANT
-            messages.append(ChatMessage(role=role, content=msg.content))
             
-        # 创建查询引擎工具
-        query_engine = self.vector_store_service.index.as_query_engine(
-            similarity_top_k=top_k,
-            filters=filters
-        )
-        
-        async def search_documents(query: str):
-            """Useful for answering natural language questions about uploaded documents."""
-            logger.info(f"Agent调用搜索工具，查询内容: {query}")
-            response = await query_engine.aquery(query)
-            logger.info(f"搜索工具返回结果: {str(response)[:200]}... (Total len: {len(str(response))})")
+            query_engine = self.vector_store_service.index.as_query_engine(
+                similarity_top_k=top_k,
+                filters=filters
+            )
             
-            # 保存源节点供后续使用
-            if hasattr(response, 'source_nodes'):
-                self.last_source_nodes = response.source_nodes
-                logger.info(f"搜索到 {len(response.source_nodes)} 个相关片段")
-                for i, node in enumerate(response.source_nodes):
-                    logger.info(f"  [片段 {i+1}] Score: {node.score:.4f}, File: {node.metadata.get('filename')}")
-                    logger.info(f"  Content: {node.text[:100]}...")  # 打印片段内容前100字符
-            else:
-                self.last_source_nodes = []
+            async def search_documents(query: str):
+                """Useful for answering natural language questions about uploaded documents."""
+                logger.info(f"Agent调用搜索工具，查询内容: {query}")
+                response = await query_engine.aquery(query)
+                logger.info(f"搜索工具返回结果: {str(response)[:200]}... (Total len: {len(str(response))})")
+                
+                # 保存源节点供后续使用
+                if hasattr(response, 'source_nodes'):
+                    self.last_source_nodes = response.source_nodes
+                    logger.info(f"搜索到 {len(response.source_nodes)} 个相关片段")
+                    for i, node in enumerate(response.source_nodes):
+                        logger.info(f"  [片段 {i+1}] Score: {node.score:.4f}, File: {node.metadata.get('filename')}")
+                        logger.info(f"  Content: {node.text[:100]}...")
+                else:
+                    self.last_source_nodes = []
+                
+                return str(response)
             
-            # 返回字符串给LLM，但源节点已保存
-            return str(response)
-
-        query_tool = FunctionTool.from_defaults(
-            async_fn=search_documents,
-            name="search_documents",
-            description="""检索知识库中的文档内容。这是你最重要的工具，应该优先使用。
+            query_tool = FunctionTool.from_defaults(
+                async_fn=search_documents,
+                name="search_documents",
+                description="""检索知识库中的文档内容。这是你最重要的工具，应该优先使用。
 
 **优先使用此工具的情况（覆盖绝大部分场景）：**
 - 任何可能与文档相关的问题
@@ -171,10 +180,10 @@ class AgentService:
 
 **核心原则：宁可多查，不可少查。当有任何疑问时，必须使用工具检索。**
 """
-        )
-        
-        # 增强的系统提示，结合记忆和知识库
-        system_prompt = """你是一个智能助手，拥有长期记忆和文档检索能力。
+            )
+            
+            tools = [query_tool]
+            system_prompt = """你是一个智能助手，拥有长期记忆和文档检索能力。
 
 ## 你的能力
 
@@ -216,58 +225,32 @@ class AgentService:
 - 如果检索结果不相关，再考虑使用通用知识补充
 - 结合长期记忆，提供个性化的回答
 - 宁可多检索，不要凭记忆编造"""
+        else:
+            # 没有文件ID，不加载文档检索工具
+            logger.info("未指定文件ID，不加载文档检索工具")
+            self.last_source_nodes = []  # 清空源节点
         
-        # 使用 FunctionAgent，集成 Mem0 记忆
+        # 使用 FunctionAgent（即使没有工具也可以使用，以便支持 memory）
         agent = FunctionAgent(
-            name="rag_agent_with_memory",
-            tools=[query_tool],
+            name="chat_agent_with_memory",
+            tools=tools,
             llm=Settings.llm,
             system_prompt=system_prompt
         )
         
-        # 如果有 memory，则传入；否则使用默认的 chat_history
+        # 使用 Mem0 记忆进行对话
         if memory:
-            logger.info(f"使用 Mem0 记忆进行对话（用户: {user_id}）")
-            handler = agent.run(user_msg=query_text, memory=memory)
+            logger.info(f"使用 Mem0 记忆进行对话（用户: {user_id}，工具数: {len(tools)}）")
+            handler = agent.run(user_msg=message, memory=memory)
         else:
-            logger.info(f"未使用记忆，使用传统聊天历史")
-            handler = agent.run(user_msg=query_text, chat_history=messages)
+            logger.warning(f"Mem0 记忆创建失败，使用空聊天历史（用户: {user_id}，工具数: {len(tools)}）")
+            # 如果 Mem0 创建失败，使用空的 chat_history
+            handler = agent.run(user_msg=message, chat_history=[])
         
         output = await handler
         
         # output 是 AgentOutput 对象
         return output
-
-    async def chat(self, message: str, chat_history: List[Dict], user_id: str = "default_user"):
-        """纯 LLM 对话，不检索向量库，但可以使用 Mem0 记忆"""
-        # 获取或创建该用户的 Mem0 记忆实例
-        memory = self._get_or_create_memory(user_id)
-        
-        if memory:
-            # 使用 FunctionAgent 以支持 memory（即使没有工具）
-            logger.info(f"使用 Mem0 记忆进行纯 LLM 对话（用户: {user_id}）")
-            agent = FunctionAgent(
-                name="chat_agent_with_memory",
-                tools=[],  # 不提供工具
-                llm=Settings.llm,
-                system_prompt="你是一个友好的智能助手。你能记住用户的偏好和过往对话信息，提供个性化的服务。"
-            )
-            handler = agent.run(user_msg=message, memory=memory)
-            output = await handler
-            return output.response.content if hasattr(output, 'response') else str(output)
-        else:
-            # 没有记忆，使用传统方式
-            messages = []
-            for msg in chat_history:
-                role = MessageRole.USER if msg.role == "user" else MessageRole.ASSISTANT
-                messages.append(ChatMessage(role=role, content=msg.content))
-            
-            # 添加当前用户消息
-            messages.append(ChatMessage(role=MessageRole.USER, content=message))
-                
-            # 使用配置好的 LLM 直接回答
-            response = await Settings.llm.achat(messages)
-            return response.message.content
 
 
 # 全局实例

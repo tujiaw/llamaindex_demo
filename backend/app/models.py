@@ -34,22 +34,13 @@ class DeleteFileResponse(BaseModel):
     deleted_chunks: int = Field(..., ge=0, description="删除的文档块数量")
 
 
-class ChatMessage(BaseModel):
-    """聊天消息模型"""
-    model_config = ConfigDict(from_attributes=True)
-    
-    role: str = Field(..., description="角色：user 或 assistant")
-    content: str = Field(..., description="消息内容")
-
-
 class ChatRequest(BaseModel):
     """聊天请求模型"""
     model_config = ConfigDict(from_attributes=True)
     
     message: str = Field(..., min_length=1, description="用户消息")
-    chat_history: List[ChatMessage] = Field(default_factory=list, description="聊天历史")
     file_ids: Optional[List[str]] = Field(default=None, description="关联的文件ID列表")
-    user_id: str = Field(default="default_user", description="用户ID，用于记忆管理")
+    user_id: str = Field(default="default_user", description="用户ID，用于 Mem0 记忆管理")
 
 
 class ChatResponse(BaseModel):
