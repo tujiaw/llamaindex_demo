@@ -114,10 +114,10 @@ export function FileList({ refreshTrigger, onFilesChange, selectedFiles, onSelec
         return (
           <div
             key={file.file_id}
-            className="group relative flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+            className="group relative flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
           >
             {/* 图标区域：文档图标和三点菜单叠加 */}
-            <div className="flex-shrink-0 relative w-5 h-5">
+            <div className="flex-shrink-0 relative w-5 h-5 flex items-center justify-center">
               {/* 文档图标 - 默认显示，悬停时隐藏 */}
               <div className="absolute inset-0 flex items-center justify-center group-hover:opacity-0 transition-opacity">
                 <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
@@ -171,17 +171,17 @@ export function FileList({ refreshTrigger, onFilesChange, selectedFiles, onSelec
             {/* 文件名和选中状态区域（可点击选中） */}
             <div
               onClick={() => toggleFileSelection(file.file_id)}
-              className="flex-1 flex items-center gap-3 cursor-pointer min-w-0"
+              className="flex-1 flex items-center justify-between gap-3 cursor-pointer min-w-0"
             >
               {/* 文件名 */}
               <div className="flex-1 min-w-0">
-                <h3 className="text-sm text-gray-900 truncate">
+                <h3 className="text-sm text-gray-900 truncate leading-5">
                   {file.filename}
                 </h3>
               </div>
 
               {/* 选中状态 */}
-              <div className="flex-shrink-0">
+              <div className="flex-shrink-0 flex items-center justify-center w-5 h-5">
                 {isSelected ? (
                   <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

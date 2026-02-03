@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, FileText, Settings, Share2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, FileText, Settings, Share2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileUpload } from "@/components/file-upload";
 import { FileList } from "@/components/file-list";
@@ -27,6 +27,17 @@ export default function Home() {
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const [showUpload, setShowUpload] = useState(false);
   const [selectedSource, setSelectedSource] = useState<SourceContent | null>(null);
+  const [userId, setUserId] = useState("");
+
+  useEffect(() => {
+    // 获取或创建用户ID
+    let uid = localStorage.getItem("llamaindex_user_id");
+    if (!uid) {
+      uid = "user_" + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem("llamaindex_user_id", uid);
+    }
+    setUserId(uid);
+  }, []);
 
   const handleUploadSuccess = () => {
     setRefreshTrigger((prev) => prev + 1);
@@ -54,30 +65,36 @@ export default function Home() {
   return (
     <div className="h-screen flex flex-col bg-gray-100">
       {/* Top Header */}
-      <header className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="flex items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-black flex items-center justify-center">
-              <span className="text-white text-lg">🤖</span>
+      <header className="border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-2">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-black flex items-center justify-center">
+              <span className="text-white text-base">🤖</span>
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">RAG 系统</h1>
+            <h1 className="text-lg font-semibold text-gray-900">RAG 系统</h1>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm">
-              <Share2 className="h-4 w-4 mr-2" />
+            {userId && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 rounded-md">
+                <User className="h-3.5 w-3.5 text-gray-600" />
+                <span className="text-xs font-mono text-gray-700">{userId}</span>
+              </div>
+            )}
+            <Button variant="ghost" size="sm" className="h-8">
+              <Share2 className="h-3.5 w-3.5 mr-1.5" />
               分享
             </Button>
-            <Button variant="ghost" size="sm">
-              <Settings className="h-4 w-4" />
+            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <Settings className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
       </header>
 
       {/* Main Content - Three Column Layout with Cards */}
-      <div className="flex-1 flex overflow-hidden p-4 gap-4">
+      <div className="flex-1 flex overflow-hidden pt-4 pb-1 px-4 gap-4">
         {/* Left Sidebar - Sources */}
-        <aside className="w-80 bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
+        <aside className="w-96 bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-900">来源</h2>
@@ -87,15 +104,13 @@ export default function Home() {
                 </svg>
               </button>
             </div>
-            <Button
+            <button
               onClick={() => setShowUpload(!showUpload)}
-              variant="outline"
-              className="w-full justify-start"
-              size="sm"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors"
             >
-              <Plus className="h-4 w-4 mr-2" />
-              添加来源
-            </Button>
+              <Plus className="h-5 w-5" />
+              <span>添加来源</span>
+            </button>
           </div>
 
           {/* Upload Area */}
@@ -111,33 +126,32 @@ export default function Home() {
               <div className="mb-3 pb-3 border-b border-gray-200">
                 <button
                   onClick={isAllSelected ? handleDeselectAll : handleSelectAll}
-                  className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors group"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors group"
                 >
-                  <div className="flex-1 text-left">
-                    <div className="text-xs font-medium text-gray-900">
-                      {isAllSelected ? "已全选" : selectedFileIds.size > 0 ? "部分选中" : "选择所有来源"}
+                  <div className="flex-shrink-0 w-5 h-5"></div>
+                  <div className="flex-1 flex items-center justify-between gap-3 min-w-0">
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="text-sm font-medium text-gray-900">
+                        {isAllSelected ? "已全选" : selectedFileIds.size > 0 ? "部分选中" : "选择所有来源"}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {selectedFileIds.size} / {files.length} 个来源
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {selectedFileIds.size} / {files.length} 个来源
+                    {/* 全选复选框 */}
+                    <div className="flex-shrink-0 flex items-center justify-center w-5 h-5">
+                      {selectedFileIds.size > 0 ? (
+                        <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          {isAllSelected ? (
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          ) : (
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+                          )}
+                        </svg>
+                      ) : (
+                        <div className="w-5 h-5 rounded border-2 border-gray-300 group-hover:border-gray-400" />
+                      )}
                     </div>
-                  </div>
-                  {/* 全选复选框 */}
-                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
-                    isAllSelected 
-                      ? "bg-blue-500 border-blue-500" 
-                      : selectedFileIds.size > 0
-                      ? "bg-blue-300 border-blue-300"
-                      : "border-gray-300 bg-white"
-                  }`}>
-                    {selectedFileIds.size > 0 && (
-                      <svg className="w-3 h-3 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
-                        {isAllSelected ? (
-                          <path d="M5 13l4 4L19 7"></path>
-                        ) : (
-                          <path d="M20 12H4"></path>
-                        )}
-                      </svg>
-                    )}
                   </div>
                 </button>
               </div>
@@ -154,33 +168,20 @@ export default function Home() {
         {/* Center - Chat */}
         <main className="flex-1 flex flex-col bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900">对话</h2>
-              <div className="flex items-center gap-2">
-                <button className="p-1.5 hover:bg-gray-100 rounded" title="更多选项">
-                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                  </svg>
-                </button>
-                <button className="p-1.5 hover:bg-gray-100 rounded" title="更多">
-                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
-                  </svg>
-                </button>
-              </div>
-            </div>
+            <h2 className="text-sm font-semibold text-gray-900">对话</h2>
           </div>
           <div className="flex-1 overflow-hidden">
             <Chat 
               files={files} 
               selectedFileIds={selectedFileIds}
               onSourceClick={setSelectedSource}
+              userId={userId}
             />
           </div>
         </main>
 
         {/* Right Sidebar - Source Viewer */}
-        <aside className="w-80 bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
+        <aside className="w-96 bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-900">来源内容</h2>
@@ -244,6 +245,13 @@ export default function Home() {
           </div>
         </aside>
       </div>
+      
+      {/* 底部提示文字 */}
+      <footer className="py-1 px-4">
+        <p className="text-xs text-gray-500 text-center">
+          RAG 系统提供的内容必经核实，因此请仔细查看回答内容。
+        </p>
+      </footer>
     </div>
   );
 }

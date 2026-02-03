@@ -25,9 +25,10 @@ interface ChatProps {
   files: FileItem[];
   selectedFileIds: Set<string>;
   onSourceClick: (source: Source) => void;
+  userId: string;
 }
 
-export function Chat({ files, selectedFileIds, onSourceClick }: ChatProps) {
+export function Chat({ files, selectedFileIds, onSourceClick, userId }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -37,18 +38,7 @@ export function Chat({ files, selectedFileIds, onSourceClick }: ChatProps) {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [userId, setUserId] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // 获取或创建用户ID
-    let uid = localStorage.getItem("llamaindex_user_id");
-    if (!uid) {
-      uid = "user_" + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem("llamaindex_user_id", uid);
-    }
-    setUserId(uid);
-  }, []);
 
   useEffect(() => {
     scrollToBottom();
@@ -230,13 +220,6 @@ export function Chat({ files, selectedFileIds, onSourceClick }: ChatProps) {
                 </button>
               </div>
             </div>
-          </div>
-          
-          {/* 底部提示文字 */}
-          <div className="mt-2 text-center">
-            <p className="text-xs text-gray-400">
-              RAG 系统提供的内容必经核实，因此请仔细查看回答内容。
-            </p>
           </div>
         </div>
       </div>
