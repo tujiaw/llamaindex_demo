@@ -75,20 +75,20 @@ export function ChatMessage({ message, onSourceClick }: ChatMessageProps) {
                 <BookOpen className="h-3 w-3" />
                 <span>{message.sources.length} 个来源</span>
               </div>
-              <div className="grid grid-cols-1 gap-2">
+              <div className="flex flex-wrap gap-2">
                 {message.sources
                   .sort((a, b) => b.score - a.score)
                   .map((source, sidx) => (
                     <button
                       key={sidx}
                       onClick={() => onSourceClick(source)}
-                      className="w-full border border-gray-200 rounded-lg overflow-hidden bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                      className="max-w-[200px] border border-gray-200 rounded-lg overflow-hidden bg-gray-50 hover:bg-gray-100 transition-colors text-left"
                     >
-                      <div className="px-3 py-2 flex items-center justify-between">
-                        <span className="text-xs font-medium text-gray-700 truncate max-w-[200px]">
+                      <div className="px-3 py-2 flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-gray-700 truncate min-w-0 flex-1" title={source.filename}>
                           {source.filename}
                         </span>
-                        <span className="text-xs text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded-full">
+                        <span className="text-xs text-gray-500 bg-gray-200 px-1.5 py-0.5 rounded-full flex-shrink-0">
                           {(source.score * 100).toFixed(0)}%
                         </span>
                       </div>

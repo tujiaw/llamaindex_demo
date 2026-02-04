@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useDropzone } from "react-dropzone";
+import { useDropzone, type FileRejection } from "react-dropzone";
 import { Upload, File } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -15,7 +15,24 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+  const onDrop = useCallback(async (acceptedFiles: File[], fileRejections: FileRejection[]) => {
+    // 处理被拒绝的文件
+    if (fileRejections.length > 0) {
+      const error = fileRejections[0].errors[0];
+      let errorMsg = "文件上传失败";
+      
+      if (error?.code === "file-too-large") {
+        errorMsg = "文件大小不能超过15MB";
+      } else if (error?.code === "file-invalid-type") {
+        errorMsg = "不支持的文件格式（仅支持 TXT, PDF, DOCX, MD）";
+      } else {
+        errorMsg = error?.message || "上传出错";
+      }
+      
+      setMessage({ type: "error", text: errorMsg });
+      return;
+    }
+
     if (acceptedFiles.length === 0) return;
 
     const file = acceptedFiles[0];
@@ -57,7 +74,7 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
       "text/markdown": [".md"],
     },
-    maxSize: 10485760, // 10MB
+    maxSize: 15728640, // 15MB
     multiple: false,
   });
 
