@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 
+import { API_BASE_URL } from "@/lib/api-config";
+
 export interface Source {
   filename: string;
   text: string;
@@ -60,7 +62,7 @@ export function useChat({ userId }: UseChatProps) {
       abortControllerRef.current = new AbortController();
 
       try {
-        const res = await fetch("/api/chat/query/stream", {
+        const res = await fetch(`${API_BASE_URL}/api/chat/query/stream`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

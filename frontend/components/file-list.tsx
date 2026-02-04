@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { API_BASE_URL } from "@/lib/api-config";
+
 interface FileItem {
   file_id: string;
   filename: string;
@@ -35,7 +37,7 @@ export function FileList({ refreshTrigger, onFilesChange, selectedFiles, onSelec
   const loadFiles = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/files/list");
+      const res = await fetch(`${API_BASE_URL}/api/files/list`);
       if (!res.ok) throw new Error("加载失败");
       const data = await res.json();
       setFiles(data);
@@ -68,7 +70,7 @@ export function FileList({ refreshTrigger, onFilesChange, selectedFiles, onSelec
     if (!confirm("确定要删除这个文件吗？")) return;
 
     try {
-      const res = await fetch(`/api/files/${fileId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/files/${fileId}`, {
         method: "DELETE",
       });
 

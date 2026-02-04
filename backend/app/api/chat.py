@@ -35,7 +35,7 @@ async def chat_query_stream(
             ):
                 # 发送 SSE 格式的数据
                 # chunk 格式: {"type": "content"|"sources"|"error"|"done", "data": ...}
-                logger.debug(f"发送流式数据: {chunk}")
+                logger.info(f"发送流式数据: {chunk}")
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
         
         except Exception as e:

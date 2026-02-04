@@ -5,6 +5,8 @@ import { useDropzone } from "react-dropzone";
 import { Upload, File } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
+import { API_BASE_URL } from "@/lib/api-config";
+
 interface FileUploadProps {
   onUploadSuccess: () => void;
 }
@@ -24,7 +26,7 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
     setMessage(null);
 
     try {
-      const res = await fetch("/api/files/upload", {
+      const res = await fetch(`${API_BASE_URL}/api/files/upload`, {
         method: "POST",
         body: formData,
       });
